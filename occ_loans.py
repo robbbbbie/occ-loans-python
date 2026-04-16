@@ -130,13 +130,13 @@ class OCCLoansClient:
         """Return API health status and basic system info."""
         resp = self.session.get(f"{self.base_url}/health", timeout=self.timeout)
         resp.raise_for_status()
-        return resp.json()
+        return _unbox(resp.json())
 
     def stats(self) -> dict:
         """Return aggregate usage statistics (no personal data)."""
         resp = self.session.get(f"{self.base_url}/stats", timeout=self.timeout)
         resp.raise_for_status()
-        return resp.json()
+        return _unbox(resp.json())
 
     # ------------------------------------------------------------------
     # pandas helpers (optional — only imported if pandas is installed)
@@ -181,7 +181,24 @@ class OCCLoansClient:
 
 def _format_date(d: str | date) -> str:
     if isinstance(d, str):
-        # Validate format
-        datetime.strptime(d, "%Y-%m-%d")
+        datetime.strptime(d, "%Y-%m-%d")  # validate format
         return d
     return d.strftime("%Y-%m-%d")
+
+
+def _unbox(obj):
+    """
+    Recursively unwrap single-element lists in a parsed JSON dict.
+
+    R (plumber) serializes scalar values as length-1 JSON arrays, e.g.:
+        {"status": ["healthy"], "record_count": [12127212]}
+    This helper converts those to plain scalars so callers get natural types.
+    Lists with more than one element are left as-is.
+    """
+    if isinstance(obj, dict):
+        return {k: _unbox(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        if len(obj) == 1:
+            return _unbox(obj[0])
+        return [_unbox(v) for v in obj]
+    return obj
